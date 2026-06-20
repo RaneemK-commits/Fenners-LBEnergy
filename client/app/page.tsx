@@ -59,16 +59,18 @@ export default function Home() {
           </p>
         </div>
 
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/product/ihl-render.png"
-          alt="Intelligent Heat Link"
-          className="relative z-10 w-[80%] max-w-md self-end drop-shadow-2xl"
-        />
+        <div className="relative z-10 h-24" />
       </aside>
 
       {/* ── Role selection ──────────────────────────────────────── */}
       <main className="relative flex flex-1 flex-col items-center justify-center px-6 py-16">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/product/onq-round-remover.png"
+          alt="OnQ controller"
+          className="absolute top-12 h-auto w-24 object-contain drop-shadow-lg sm:w-28"
+        />
+
         <div className="w-full max-w-md">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
