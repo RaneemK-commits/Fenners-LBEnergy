@@ -51,6 +51,11 @@ TARIFF_EUR_PER_KWH = 0.30       # €/kWh electricity price        (ASSUMPTION)
 CO2_KG_PER_KWH     = 0.40       # kg CO₂ per kWh grid electricity (ASSUMPTION)
 BACKTEST_LOOKBACK_H = 7.0       # overnight setback window (events run 04:30–21:30 → 7h gap)
 
+# Cooling-window analogues (verified from cooling power_draw.csv: ~7.9 kW baseline,
+# spikes to ~42 kW — same cheap-baseline / expensive-boost structure as heating).
+COOL_STANDBY_KW            = 7.9   # kW total: cooling Mode-1 baseline (no boost)
+BACKTEST_PRECOOL_LOOKBACK_H = 3.0  # precool window before a lecture slot (overnight → 06:00)
+
 # Building-type priors for the generalisation sweep (β₁, β₂, τ estimate).
 BUILDING_TYPES = {
     "Thin tent (4×8m, canvas)":         {"beta1": 0.50,  "beta2": -2.00,  "tau_est": 0.50},

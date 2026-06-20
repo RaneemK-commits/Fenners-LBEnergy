@@ -187,6 +187,67 @@ def fit_heatup_trajectory(
     }
 
 
+def fit_cooldown_trajectory(
+    df: pd.DataFrame,
+    init: tuple[float, float, float] = (0.05, -0.02, 0.0),
+) -> dict:
+    """
+    Calibrate the cool-DOWN parameters by trajectory fit — the cooling-season
+    mirror of `fit_heatup_trajectory`.
+
+    The RC ODE is sign-symmetric: with a COLD supply (`T_supply < T_room`) the
+    β₁·(T_supply−T_room) term is negative and the room cools, so β₁ stays ≥0 and
+    β₂≤0 exactly as in heating — only the *data* differs (cold supply, hot
+    outside). We select active cool-down ramps and fit β to reproduce the observed
+    cooling *curves*. `T_supply_eff` is the median cold-supply temperature the
+    controller MUST use as `T_supply_nom`, mirroring the heating-side consistency
+    requirement.
+
+    Note on `SUPPLY_DELTA`: cooling supply-vs-room deltas are far gentler than
+    heating's (an AC supplies modestly cool air, not 37 °C), so a 1 °C threshold —
+    combined with an actual downward room trend — is the right cool-down selector.
+    Using heating's 3 °C here finds no usable ramps.
+
+    Returns calibrated {β₁,β₂,β₃}, `T_supply_eff`, ramp RMSE and ramp count.
+    """
+    from scipy.optimize import minimize
+
+    SUPPLY_DELTA = 1.0
+    is_boost = df["is_boost"] if "is_boost" in df else (df["P_total_kw"] >= 20).astype(int)
+    cooling_now = df["T_supply"] < df["T_room"] - SUPPLY_DELTA        # cold supply present
+    if "dT_dt" in df:
+        cooling_now = cooling_now & (df["dT_dt"] < 0)                 # room actually falling
+    mask = cooling_now & (is_boost == 0)
+    grp = (mask != mask.shift()).cumsum()
+    ramps = [g for _, g in df[mask].groupby(grp) if len(g) >= 5]
+    if not ramps:
+        raise ValueError("No Mode-1 cool-down ramps found for trajectory calibration.")
+
+    T_supply_eff = float(pd.concat(ramps)["T_supply"].median())
+
+    def ramp_rmse(beta: np.ndarray) -> float:
+        err, n = 0.0, 0
+        for g in ramps:
+            sim = simulate_trajectory(
+                float(g["T_room"].iloc[0]),
+                g["T_supply"].values, g["T_out"].values,
+                tuple(beta), dt_h=PRED_DT_HOURS,
+            )
+            err += float(np.sum((sim - g["T_room"].values) ** 2)); n += len(g)
+        return float(np.sqrt(err / n))
+
+    # Same physical bounds as heating: β₁≥0 (supply drives toward its temp), β₂≤0.
+    res = minimize(ramp_rmse, np.array(init), method="L-BFGS-B",
+                   bounds=[(0.0, 1.0), (-1.0, 0.0), (-2.0, 2.0)])
+    b1, b2, b3 = res.x
+    return {
+        "beta1": float(b1), "beta2": float(b2), "beta3": float(b3),
+        "T_supply_eff": T_supply_eff,
+        "ramp_rmse_degC": float(res.fun),
+        "n_ramps": len(ramps),
+    }
+
+
 def simulate_trajectory(
     T0:             float,
     T_supply_arr:   np.ndarray,
