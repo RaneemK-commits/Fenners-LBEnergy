@@ -17,4 +17,10 @@ export const energyService = {
     api
       .get("/energy/statistics")
       .then((res) => res.data),
+
+  // B1 (current) vs B3 (ours) per event — for the comparison chart.
+  getComparison: (window: "heating" | "cooling" = "heating") =>
+    api
+      .get("/backtest", { params: { window } })
+      .then((res) => res.data),
 };

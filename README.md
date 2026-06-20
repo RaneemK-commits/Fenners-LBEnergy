@@ -158,6 +158,7 @@ Fenners-LBEnergy/
 │       ├── residual.py            # LightGBM residual corrector (scaffold)
 │       ├── evaluate.py            # cross-window validation + metrics
 │       └── plots.py               # diagnostic plotting
+├── api.py                         # FastAPI layer for the frontend (no DB)
 ├── scripts/                       # thin CLI entrypoints
 │   ├── train.py                   # calibrate → models/rc_params.json
 │   ├── backtest.py                # run the event-level backtest → outputs/
@@ -197,6 +198,29 @@ See [`PIPELINE.md`](docs/beststart_prediction/PIPELINE.md) for the full how-to, 
 
 ---
 
+## Frontend Integration — API (no database)
+
+The frontend talks to the model over a thin **FastAPI** layer. There's **no database**: the
+data is fixed historical CSVs and the model computes results in memory (calibrated once at
+startup, ~0.2 s per request).
+
+```bash
+uvicorn api:app --reload      # serves http://127.0.0.1:8000  (docs at /docs)
+```
+
+| Endpoint | Returns | Frontend use |
+|---|---|---|
+| `GET /health` | liveness | — |
+| `GET /model` | calibrated β, τ, `T_supply_eff` | "how the model was fit" |
+| `GET /backtest?window=heating` | summary + per-event B1-vs-B3 | savings dashboard |
+| `GET /preheat?t_room=&t_out=&hours=&setpoint=` | lead time + trajectory | live controller + "−2 °C" what-if |
+| `GET /trajectory?window=&index=` | observed vs simulated curve | comfort chart |
+
+CORS is open for any origin during the hackathon. The frontend just `fetch()`es these — e.g.
+`fetch('http://127.0.0.1:8000/backtest?window=heating')`.
+
+---
+
 ## Tech Stack
 
 | Layer | Choice |
@@ -206,6 +230,7 @@ See [`PIPELINE.md`](docs/beststart_prediction/PIPELINE.md) for the full how-to, 
 | Data pipeline | pandas (CSV → two frames); native ~90 s for anomaly, 15-min for prediction |
 | ML residual (stretch) | LightGBM (quantile regression for uncertainty) |
 | Weather | Open-Meteo API (free, EU-hosted) — cached to `data/_external_cache/` |
+| Frontend API | FastAPI + uvicorn (`api.py`) — no database |
 | Demo (planned) | Streamlit / Jupyter |
 
 ---

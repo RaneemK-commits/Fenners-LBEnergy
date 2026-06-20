@@ -22,3 +22,10 @@ export function useEnergyStatistics() {
     queryFn: energyService.getStatistics,
   });
 }
+
+export function useEnergyComparison(window: "heating" | "cooling" = "heating") {
+  return useQuery({
+    queryKey: ["energy", "comparison", window],
+    queryFn: () => energyService.getComparison(window),
+  });
+}

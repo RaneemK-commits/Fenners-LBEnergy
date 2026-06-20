@@ -11,3 +11,7 @@ lightgbm
 
 # Parquet persistence (pipeline.persist_parquet)
 pyarrow
+
+# API layer (api.py) for the frontend
+fastapi
+uvicorn

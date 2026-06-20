@@ -22,6 +22,8 @@ src/lbenergy/        ← the model as an importable package
   backtest.py          event-level B1-vs-B3 evaluation + kWh/€/CO₂               ← NEW
   residual.py          LightGBM residual corrector (SCAFFOLD — needs implementing)
   evaluate.py, plots.py
+api.py               FastAPI layer for the frontend (no DB)                      ← NEW
+                     uvicorn api:app --reload  → http://127.0.0.1:8000/docs
 scripts/
   train.py             python scripts/train.py      → models/rc_params.json
   backtest.py          python scripts/backtest.py    → outputs/backtest_*.csv     ← NEW
@@ -50,7 +52,8 @@ models/  notebooks/  outputs/
    n_ramps, tau_cool_hours}` — no longer `{beta, tau}`. Re-run `python scripts/train.py` after pulling.
 
 5. **New dependency surface:** `external.py` calls Open-Meteo over HTTP (offline-safe fallback to NaN);
-   weather caches to `data/_external_cache/` as CSV (parquet isn't installed here).
+   weather caches to `data/_external_cache/` as CSV (parquet isn't installed here). **`api.py` adds
+   `fastapi` + `uvicorn`** (now in `requirements.txt`) — `pip install -r requirements.txt` after pulling.
 
 ## To run anything
 
@@ -75,9 +78,11 @@ Works on a fresh clone — no path editing.
 
 ## Frontend / backend
 
-Still **not** in this repo — whoever owns those keeps them separate. The integration point is
-`predict_preheat_start()` in `src/lbenergy/preheat.py`; for savings, `run_backtest()` in
-`src/lbenergy/backtest.py`.
+Still **not** in this repo — whoever owns those keeps them separate. **The frontend now talks to
+the model over HTTP via `api.py`** (FastAPI, no DB): `uvicorn api:app --reload`, then
+`GET /backtest`, `/preheat`, `/trajectory`, `/model` (interactive docs at `/docs`, CORS open).
+The underlying integration points remain `predict_preheat_start()` (`preheat.py`) and
+`run_backtest()` (`backtest.py`).
 
 ## ⚠️ Action needed — rebase now while conflicts are small
 
