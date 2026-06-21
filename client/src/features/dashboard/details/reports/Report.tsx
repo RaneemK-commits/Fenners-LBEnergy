@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { DetailTopbar } from "@/src/shared/detail-topbar";
 import { ChevronDown, ChevronRight, FileText, Loader2, Check, AlertCircle } from "lucide-react";
+import { useRole } from "@/src/features/auth/use-role";
 
 type ReportType = "financial" | "sustainability";
 
@@ -33,6 +35,13 @@ export default function ReportsPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [selected, setSelected] = useState<ReportType | null>(null);
   const [run, setRun] = useState<RunState>({ kind: "idle" });
+
+  // Technicians may not access Reports — redirect them to the dashboard.
+  const router = useRouter();
+  const role = useRole();
+  useEffect(() => {
+    if (role === "technician") router.replace("/dashboard");
+  }, [role, router]);
 
   function toggleWeek(week: Week) {
     if (!week.hasData) return;
@@ -80,6 +89,8 @@ export default function ReportsPage() {
       setRun({ kind: "error", message: (err as Error).message });
     }
   }
+
+  if (role === "technician") return null;
 
   return (
     <>

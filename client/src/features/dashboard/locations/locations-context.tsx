@@ -27,7 +27,7 @@ export function LocationsProvider({ children }: { children: React.ReactNode }) {
   const [locations, setLocations] = useState<Location[]>(SEED);
   const [selectedId, setSelectedIdState] = useState<string>(SEED[0].id);
 
-  // load once
+  // Load saved state once on mount.
   useEffect(() => {
     try {
       const raw = localStorage.getItem(KEY);
@@ -39,12 +39,13 @@ export function LocationsProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   }, []);
 
-  // persist list
-  useEffect(() => {
+  // Persist explicitly on user actions (not via an effect, which would
+  // overwrite the saved list with the seed default on the first render).
+  function persist(list: Location[]) {
     try {
-      localStorage.setItem(KEY, JSON.stringify(locations));
+      localStorage.setItem(KEY, JSON.stringify(list));
     } catch {}
-  }, [locations]);
+  }
 
   function setSelectedId(id: string) {
     setSelectedIdState(id);
@@ -57,17 +58,18 @@ export function LocationsProvider({ children }: { children: React.ReactNode }) {
     const n = name.trim();
     if (!n) return;
     const loc: Location = { id: crypto.randomUUID(), name: n, units: clampUnits(units) };
-    setLocations((l) => [...l, loc]);
+    const next = [...locations, loc];
+    setLocations(next);
+    persist(next);
     setSelectedId(loc.id);
   }
 
   function removeLocation(id: string) {
-    setLocations((l) => {
-      if (l.length <= 1) return l; // always keep at least one location
-      const next = l.filter((x) => x.id !== id);
-      if (id === selectedId && next[0]) setSelectedId(next[0].id);
-      return next;
-    });
+    if (locations.length <= 1) return; // always keep at least one location
+    const next = locations.filter((x) => x.id !== id);
+    setLocations(next);
+    persist(next);
+    if (id === selectedId && next[0]) setSelectedId(next[0].id);
   }
 
   const selected =

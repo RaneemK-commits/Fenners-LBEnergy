@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useRole } from "@/src/features/auth/use-role";
 import {
   Calendar,
   AlertTriangle,
@@ -19,6 +20,12 @@ const NAV_ITEMS = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const role = useRole();
+
+  // Technicians have no access to Reports.
+  const items = NAV_ITEMS.filter(
+    (i) => i.href !== "/dashboard/reports" || role !== "technician"
+  );
 
   return (
     <aside className="flex h-screen w-[260px] shrink-0 flex-col justify-between bg-[#191919] px-4 py-6 text-white">
@@ -30,13 +37,13 @@ export function Sidebar() {
         </Link>
 
         <nav className="flex flex-col gap-1">
-          {NAV_ITEMS.map(({ href, label, icon: Icon, badge }) => {
+          {items.map(({ href, label, icon: Icon }) => {
             const active = pathname?.startsWith(href);
             return (
               <Link
                 key={href}
                 href={href}
-                className={`flex items-center justify-between px-3 py-2.5 text-sm transition-colors ${
+                className={`flex items-center px-3 py-2.5 text-sm transition-colors ${
                   active
                     ? "bg-coral-500 font-semibold text-white"
                     : "text-white/55 hover:bg-white/5 hover:text-white/90"
@@ -46,15 +53,6 @@ export function Sidebar() {
                   <Icon size={17} strokeWidth={2} />
                   {label}
                 </span>
-                {badge ? (
-                  <span
-                    className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold text-white ${
-                      active ? "bg-white/25" : "bg-coral-600"
-                    }`}
-                  >
-                    {badge}
-                  </span>
-                ) : null}
               </Link>
             );
           })}
