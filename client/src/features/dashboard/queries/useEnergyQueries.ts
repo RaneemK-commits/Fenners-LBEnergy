@@ -29,3 +29,17 @@ export function useEnergyComparison(window: "heating" | "cooling" = "heating") {
     queryFn: () => energyService.getComparison(window),
   });
 }
+
+export function useEnergyPower(window: "heating" | "cooling" = "heating") {
+  return useQuery({
+    queryKey: ["energy", "power", window],
+    queryFn: () => energyService.getPower(window),
+  });
+}
+
+export function useOptimized(window: "heating" | "cooling" = "heating") {
+  return useQuery({
+    queryKey: ["energy", "optimized", window],
+    queryFn: () => energyService.getOptimized(window),
+  });
+}

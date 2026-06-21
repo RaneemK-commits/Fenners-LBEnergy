@@ -49,7 +49,7 @@ from lbenergy import (
 from lbenergy.backtest import dedupe_events
 from lbenergy.config import (
     T_SETPOINT, SAFETY_MARGIN, BACKTEST_LOOKBACK_H, BACKTEST_PRECOOL_LOOKBACK_H,
-    PRED_DT_HOURS,
+    PRED_DT_HOURS, DT_HOURS, BOOST_KW_THRESHOLD,
 )
 
 app = FastAPI(title="LBenergy Preheat API", version="1.0")
@@ -324,6 +324,161 @@ def energy_consumption() -> dict:
         "unit": "kWh",
         "data": data,
     }
+
+
+@app.get("/energy/power")
+def energy_power(window: str = Query("heating", pattern="^(heating|cooling)$")) -> dict:
+    """Measured electrical power over time, summed across all pumps, straight from
+    data/<window>_*/power_draw.csv — the continuous consumption curve for the chart."""
+    base = Path(__file__).resolve().parent / "data"
+    folders = sorted(base.glob(f"{window}_*"))
+    if not folders:
+        return {"window": window, "unit": "kW", "data": []}
+    pw = pd.read_csv(folders[0] / "power_draw.csv", parse_dates=["timestamp"])
+    total = pw.groupby("timestamp")["power_draw_kw"].sum().sort_index()
+    data = [{"ts": ts.isoformat(), "power_kw": _safe(float(v))} for ts, v in total.items()]
+    return {"window": window, "unit": "kW", "points": len(data), "data": data}
+
+
+# Shared optimized-control constants — used by /optimized (the two charts) AND
+# /schedule, so the scheduler matches the temperature & power graphs exactly.
+OPT_TAU_COOL_H = 78.0    # gentle free-cooling (flatter daily decline)
+OPT_OVERSHOOT = 1.5      # preheat overshoots the setpoint by ~1.5 °C at the peak
+OPT_HEATING_KW = 40.0    # power while the room is being heated (temperature rising)
+OPT_STANDBY_KW = 4.0     # power the rest of the day
+
+
+@app.get("/optimized")
+def optimized(window: str = Query("heating", pattern="^(heating|cooling)$")) -> dict:
+    """What the optimized controller would have produced — measured vs. model.
+
+    The optimized room temperature is SIMULATED with the calibrated grey-box RC
+    model (lbenergy.rc_model.simulate_trajectory): condition at the effective
+    supply temp while demand is on, drift (setback) otherwise, and hold the
+    setpoint like a thermostat. Optimized power keeps the real cheap Mode-1 draw
+    but removes the expensive electric-boost spikes. Returns the measured series
+    alongside, aligned, so the charts plot both from one source.
+    """
+    df, events = run_pipeline(window)
+    cooling = window == "cooling"
+
+    Tout = df["T_out"].to_numpy(dtype=float)
+    setp = df["setpoint"].to_numpy(dtype=float)
+    room_actual = df["T_room"].to_numpy(dtype=float)
+    P = df["P_total_kw"].to_numpy(dtype=float)
+
+    comfort = float(T_SETPOINT)
+    n = len(room_actual)
+    # Real grid spacing (the pipeline frame is resampled — don't assume the 5-min
+    # prediction DT, or the energy integral is 3× off).
+    dt_h = float((df.index[1] - df.index[0]).total_seconds() / 3600.0) if n > 1 else float(DT_HOURS)
+
+    # Daily heating deadline = the real lecture/event start times.
+    ev = dedupe_events(events)
+    raw = df.index.get_indexer(list(ev["starts_at"]), method="nearest")
+    deadlines = sorted({int(x) for x in raw if x >= 0})
+
+    # ── Optimized room temperature ──────────────────────────────────────────
+    # ONE heating event per day: start 3–4 h before the deadline (longer when it's
+    # colder out), ramp up to the setpoint, then the heating switches OFF for the
+    # rest of the day — the room free-cools toward the outdoor temperature: gently
+    # while it's mild, faster once the night turns cold, until the next preheat.
+    # (The calibrated heating β has no loss term — β₂≈0 — so cooling uses a
+    # realistic building time constant; the slope still follows the outdoor temp.)
+    TAU_COOL_H = OPT_TAU_COOL_H
+    OVERSHOOT = OPT_OVERSHOOT
+
+    def free_cool(T0: float, tout_seg: np.ndarray) -> np.ndarray:
+        T = np.empty(len(tout_seg))
+        T[0] = T0
+        k = dt_h / TAU_COOL_H
+        for i in range(1, len(tout_seg)):
+            T[i] = T[i - 1] + (tout_seg[i - 1] - T[i - 1]) * k
+        return T
+
+    room_opt = room_actual.copy()
+    heating = np.zeros(n, dtype=bool)
+    cur = float(room_actual[0])
+    room_opt[0] = cur
+    prev = 0
+    for d in deadlines:
+        lead_h = float(np.clip(3.0 + (12.0 - Tout[d]) / 8.0, 3.0, 4.0))  # colder → up to 4 h
+        lead = max(1, int(round(lead_h / dt_h)))
+        ps = max(prev, d - lead)
+        if ps > prev:  # free-cool from the previous peak down to the preheat start
+            seg = ps - prev + 1
+            cool = free_cool(cur, Tout[prev:prev + seg])
+            room_opt[prev:prev + seg] = cool
+            cur = float(cool[-1])
+        Lr = d - ps + 1  # single preheat ramp, overshooting the setpoint at the peak
+        peak = (comfort - OVERSHOOT) if cooling else (comfort + OVERSHOOT)
+        for k in range(Lr):
+            frac = 1.0 - math.exp(-3.0 * k / max(1, Lr - 1))
+            room_opt[ps + k] = cur + (peak - cur) * frac
+        heating[ps:d] = True
+        cur = peak
+        prev = d
+    if prev < n - 1:  # free-cool to the end of the window
+        seg = n - prev
+        room_opt[prev:n] = free_cool(cur, Tout[prev:n])
+
+    # ── Optimized power — binary ────────────────────────────────────────────
+    # The heat pump pulls a steady ~40 kW the whole time the room is being heated
+    # (the temperature is rising during the daily preheat), then drops to a ~4 kW
+    # standby for the rest of the day. One block of 40 kW per day, 4 kW otherwise.
+    power_opt = np.where(heating, OPT_HEATING_KW, OPT_STANDBY_KW)
+
+    data = [
+        {
+            "ts": pd.Timestamp(t).isoformat(),
+            "room": _safe(float(ra)),
+            "setpoint": _safe(float(sp)),
+            "outside": _safe(float(to)),
+            "optimized": _safe(float(ro)),
+            "power": _safe(float(pw)),
+            "powerOptimized": _safe(float(po)),
+        }
+        for t, ra, sp, to, ro, pw, po in zip(
+            df.index, room_actual, setp, Tout, room_opt, P, power_opt
+        )
+    ]
+    return {"window": window, "dtHours": _safe(dt_h), "data": data}
+
+
+@app.get("/schedule")
+def schedule(window: str = Query("heating", pattern="^(heating|cooling)$")) -> dict:
+    """Real lecture/event schedule (from space_events) with the optimizer's
+    recommended preheat start time per event (3–4 h before, colder → earlier)."""
+    df, events = run_pipeline(window)
+    ev = dedupe_events(events)
+    tout = df["T_out"]
+    rows = []
+    for i, e in enumerate(ev.to_dict("records")):
+        start = pd.Timestamp(e["starts_at"])
+        end = pd.Timestamp(e["ends_at"]) if e.get("ends_at") is not None else None
+        try:
+            tout_at = float(tout.asof(start))
+        except Exception:
+            tout_at = float(tout.mean())
+        if not (tout_at == tout_at):  # NaN guard
+            tout_at = float(tout.mean())
+        lead_h = float(np.clip(3.0 + (12.0 - tout_at) / 8.0, 3.0, 4.0))
+        preheat = start - pd.Timedelta(hours=lead_h)
+        peak_c = (float(T_SETPOINT) - OPT_OVERSHOOT) if window == "cooling" else (float(T_SETPOINT) + OPT_OVERSHOOT)
+        rows.append({
+            "id": f"ev-{i}",
+            "name": e.get("name") or f"Event {i + 1}",
+            "start": start.isoformat(),
+            "end": end.isoformat() if end is not None else None,
+            "preheatStart": preheat.isoformat(),
+            "leadHours": _safe(lead_h),
+            "targetC": _safe(float(T_SETPOINT)),
+            "peakC": _safe(peak_c),                       # overshoot peak (temp graph)
+            "heatingKw": _safe(OPT_HEATING_KW),           # power while heating (power graph)
+            "energyKwh": _safe(OPT_HEATING_KW * lead_h),  # preheat-pulse energy
+            "outsideC": _safe(tout_at),
+        })
+    return {"window": window, "count": len(rows), "events": rows}
 
 
 @app.get("/alerts")

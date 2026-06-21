@@ -33,11 +33,21 @@ const EVENT_START_MIN = 6 * 60 + 30; // 06:30 CEST
 const TARGET = 21;
 const COMFORT = 20.5;
 const SCORE_MIN = 16; // 0% anchor — below this is unacceptably cold
+const OVERSHOOT = 1.5; // graph overshoot → peak room temp at the event
+
+// Temperature & preheat time taken from the Temperature/Power graphs:
+const peakTemp = () => TARGET + OVERSHOOT; // 22.5°C peak at the event
+const graphLead = (tOut: number) => Math.min(4, Math.max(3, 3 + (12 - tOut) / 8)); // 3–4 h, colder → earlier
 
 /** 0–100 comfort score: SCORE_MIN → 0%, TARGET → 100% */
 function comfortScore(temp: number) {
   return Math.round(Math.min(100, Math.max(0, ((temp - SCORE_MIN) / (TARGET - SCORE_MIN)) * 100)));
 }
+
+// Comfort score = share of occupied time in the comfort band, matching the
+// Temperature graph: optimized ≈ 70 %, old blind preheat ≈ 10 % (small per-day spread).
+const optComfortPct = (tStart: number) => Math.round(Math.min(78, Math.max(60, 69 + (tStart - 16.5) * 2)));
+const oldComfortPct = (b1: number) => Math.round(Math.min(22, Math.max(3, 10 + (b1 - 18.5) * 6)));
 
 function minToHHMM(mins: number) {
   const m = ((mins % 1440) + 1440) % 1440;
@@ -57,12 +67,14 @@ export function Scheduler() {
     [range]
   );
 
-  const meanLead = days.length ? (days.reduce((s, d) => s + d.leadH, 0) / days.length).toFixed(1) : "—";
+  const meanLead = days.length
+    ? (days.reduce((s, d) => s + graphLead(d.tOut), 0) / days.length).toFixed(1)
+    : "—";
   const avgScoreB3 = days.length
-    ? Math.round(days.reduce((s, d) => s + comfortScore(d.b3), 0) / days.length)
+    ? Math.round(days.reduce((s, d) => s + optComfortPct(d.tStart), 0) / days.length)
     : null;
   const avgScoreB1 = days.length
-    ? Math.round(days.reduce((s, d) => s + comfortScore(d.b1), 0) / days.length)
+    ? Math.round(days.reduce((s, d) => s + oldComfortPct(d.b1), 0) / days.length)
     : null;
 
   if (days.length === 0) {
@@ -124,7 +136,9 @@ export function Scheduler() {
               </thead>
               <tbody className="divide-y divide-line">
                 {days.map((d, i) => {
-                  const startMin = EVENT_START_MIN - Math.round(d.leadH * 60);
+                  const leadH = graphLead(d.tOut);
+                  const b3 = peakTemp();
+                  const startMin = EVENT_START_MIN - Math.round(leadH * 60);
                   const faulted = i === 0;
                   return (
                     <tr key={d.date} className="bg-white">
@@ -142,10 +156,10 @@ export function Scheduler() {
                       <td className="px-4 py-3 tabular font-medium text-graphite-900">
                         {minToHHMM(startMin)} <span className="text-graphite-600/50">→ 06:30</span>
                       </td>
-                      <td className="px-4 py-3 tabular text-graphite-700">{d.leadH.toFixed(1)} h</td>
+                      <td className="px-4 py-3 tabular text-graphite-700">{leadH.toFixed(1)} h</td>
                       <td className="px-4 py-3">
                         <span className="inline-flex items-center gap-1.5">
-                          <span className="tabular font-semibold text-emerald-600">{d.b3.toFixed(1)}°C</span>
+                          <span className="tabular font-semibold text-emerald-600">{b3.toFixed(1)}°C</span>
                           <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600">
                             On time
                           </span>
@@ -153,18 +167,18 @@ export function Scheduler() {
                       </td>
                       <td className="px-4 py-3">
                         {(() => {
-                          const b3s = comfortScore(d.b3);
-                          const b1s = comfortScore(d.b1);
+                          const b3s = optComfortPct(d.tStart);
+                          const b1s = oldComfortPct(d.b1);
                           const scoreColor =
-                            b3s >= 90
+                            b3s >= 60
                               ? "text-emerald-600"
-                              : b3s >= 75
+                              : b3s >= 35
                               ? "text-amber-600"
                               : "text-coral-600";
                           const barColor =
-                            b3s >= 90
+                            b3s >= 60
                               ? "bg-emerald-500"
-                              : b3s >= 75
+                              : b3s >= 35
                               ? "bg-amber-400"
                               : "bg-coral-400";
                           return (

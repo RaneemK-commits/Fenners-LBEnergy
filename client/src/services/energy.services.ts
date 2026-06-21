@@ -23,4 +23,16 @@ export const energyService = {
     api
       .get("/backtest", { params: { window } })
       .then((res) => res.data),
+
+  // Measured total power draw over time (all pumps summed) from power_draw.csv.
+  getPower: (window: "heating" | "cooling" = "heating") =>
+    api
+      .get("/energy/power", { params: { window } })
+      .then((res) => res.data),
+
+  // Measured vs. RC-model-optimized room temp + power, aligned over the window.
+  getOptimized: (window: "heating" | "cooling" = "heating") =>
+    api
+      .get("/optimized", { params: { window } })
+      .then((res) => res.data),
 };

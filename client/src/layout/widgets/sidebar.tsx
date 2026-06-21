@@ -13,29 +13,33 @@ import {
   MapPin,
 } from "lucide-react";
 import { getRole } from "@/src/features/auth/role";
+import { useAlarms } from "@/src/features/dashboard/queries/useAlarms";
 
-type NavItem = { href: string; label: string; icon: React.ElementType; badge?: number; exact?: boolean };
+type NavItem = { href: string; label: string; icon: React.ElementType; exact?: boolean };
 
 const MANAGER_NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard, exact: true },
   { href: "/dashboard/schedule", label: "Scheduler", icon: Calendar },
   { href: "/dashboard/energy", label: "Energy & Savings", icon: Zap },
   { href: "/dashboard/reports", label: "Reports", icon: FileText },
-  { href: "/dashboard/alerts", label: "Alerts", icon: AlertTriangle, badge: 3 },
-  { href: "/dashboard/settings", label: "Settings", icon: Settings },
+  { href: "/dashboard/alerts", label: "Alerts", icon: AlertTriangle },
+  { href: "/dashboard/configuration", label: "Configuration", icon: Settings },
 ];
 
 const TECHNICIAN_NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Diagnostics", icon: LayoutDashboard, exact: true },
   { href: "/dashboard/schedule", label: "Schedule", icon: Calendar },
-  { href: "/dashboard/alerts", label: "Faults", icon: AlertTriangle, badge: 3 },
-  { href: "/dashboard/settings", label: "Settings", icon: Settings },
+  { href: "/dashboard/alerts", label: "Faults", icon: AlertTriangle },
+  { href: "/dashboard/configuration", label: "Configuration", icon: Settings },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
   const role = getRole();
   const navItems = role === "technician" ? TECHNICIAN_NAV_ITEMS : MANAGER_NAV_ITEMS;
+
+  // Day-scoped alarm count (from the snapshot fault feed) → sidebar notification.
+  const { activeCount } = useAlarms();
 
   return (
     <aside className="flex h-screen w-[260px] shrink-0 flex-col justify-between bg-[#191919] px-4 py-6 text-white">
@@ -47,8 +51,9 @@ export function Sidebar() {
         </Link>
 
         <nav className="flex flex-col gap-1">
-          {navItems.map(({ href, label, icon: Icon, badge, exact }) => {
+          {navItems.map(({ href, label, icon: Icon, exact }) => {
             const active = exact ? pathname === href : pathname?.startsWith(href);
+            const badge = href === "/dashboard/alerts" && activeCount > 0 ? activeCount : undefined;
             return (
               <Link
                 key={href}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AppTopbar } from "@/src/shared/app-topbar";
 import { Card } from "@/src/components/ui/card";
 import { Flame, Repeat, Snowflake, Fan, Minus, Plus } from "lucide-react";
@@ -18,12 +18,56 @@ const MODES: {
   { value: "cooling", label: "Cooling", icon: <Snowflake className="h-4 w-4" />, activeClass: "bg-ocean-500 text-white" },
 ];
 
+const KEY = "lb-config";
 const clampTarget = (v: number) => Math.min(30, Math.max(5, Math.round(v * 2) / 2));
+const clampFan = (v: number) => Math.min(100, Math.max(0, Math.round(v || 0)));
+
+type Config = { fan: number; mode: Mode; target: number };
+
+function persist(cfg: Config) {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(cfg));
+  } catch {}
+}
 
 export default function ConfigurationPage() {
   const [fan, setFan] = useState(60);
   const [mode, setMode] = useState<Mode>("auto");
   const [target, setTarget] = useState(21);
+  const [saved, setSaved] = useState(false);
+
+  // Load saved configuration on mount.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (!raw) return;
+      const c = JSON.parse(raw) as Partial<Config>;
+      if (typeof c.fan === "number") setFan(clampFan(c.fan));
+      if (c.mode === "heating" || c.mode === "auto" || c.mode === "cooling") setMode(c.mode);
+      if (typeof c.target === "number") setTarget(clampTarget(c.target));
+    } catch {}
+  }, []);
+
+  // Persist explicitly on each change (saved values stay after reopening).
+  function changeFan(v: number) {
+    const next = clampFan(v);
+    setFan(next);
+    persist({ fan: next, mode, target });
+  }
+  function changeMode(m: Mode) {
+    setMode(m);
+    persist({ fan, mode: m, target });
+  }
+  function changeTarget(v: number) {
+    const next = clampTarget(v);
+    setTarget(next);
+    persist({ fan, mode, target: next });
+  }
+  function apply() {
+    persist({ fan, mode, target });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1500);
+  }
 
   return (
     <>
@@ -45,7 +89,7 @@ export default function ConfigurationPage() {
                   key={m.value}
                   type="button"
                   aria-pressed={active}
-                  onClick={() => setMode(m.value)}
+                  onClick={() => changeMode(m.value)}
                   className={`flex flex-1 items-center justify-center gap-2 px-4 py-3 text-sm font-bold uppercase tracking-wide transition-colors ${
                     i > 0 ? "border-l border-line" : ""
                   } ${active ? m.activeClass : "bg-white text-graphite-600 hover:bg-canvas dark:bg-graphite-800"}`}
@@ -76,7 +120,7 @@ export default function ConfigurationPage() {
             min={0}
             max={100}
             value={fan}
-            onChange={(e) => setFan(Number(e.target.value))}
+            onChange={(e) => changeFan(Number(e.target.value))}
             className="mt-4 h-2 w-full cursor-pointer accent-coral-500"
             aria-label="Fan air supply percentage"
           />
@@ -98,7 +142,7 @@ export default function ConfigurationPage() {
             <button
               type="button"
               aria-label="Decrease target temperature"
-              onClick={() => setTarget((t) => clampTarget(t - 0.5))}
+              onClick={() => changeTarget(target - 0.5)}
               className="flex h-11 w-11 items-center justify-center border border-line text-graphite-900 transition-colors hover:border-coral-500 hover:text-coral-500"
             >
               <Minus className="h-4 w-4" />
@@ -111,7 +155,7 @@ export default function ConfigurationPage() {
                 min={5}
                 max={30}
                 step={0.5}
-                onChange={(e) => setTarget(clampTarget(Number(e.target.value)))}
+                onChange={(e) => changeTarget(Number(e.target.value))}
                 className="tabular w-16 bg-transparent text-center text-2xl font-bold text-graphite-900 outline-none"
                 aria-label="Target temperature in Celsius"
               />
@@ -121,7 +165,7 @@ export default function ConfigurationPage() {
             <button
               type="button"
               aria-label="Increase target temperature"
-              onClick={() => setTarget((t) => clampTarget(t + 0.5))}
+              onClick={() => changeTarget(target + 0.5)}
               className="flex h-11 w-11 items-center justify-center border border-line text-graphite-900 transition-colors hover:border-coral-500 hover:text-coral-500"
             >
               <Plus className="h-4 w-4" />
@@ -130,8 +174,8 @@ export default function ConfigurationPage() {
         </Card>
 
         <div className="flex justify-start">
-          <button type="button" className="btn-cta">
-            Apply settings
+          <button type="button" onClick={apply} className="btn-cta">
+            {saved ? "Saved ✓" : "Apply settings"}
           </button>
         </div>
       </main>

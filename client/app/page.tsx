@@ -13,13 +13,13 @@ const ROLES: {
   {
     role: "manager",
     title: "Manager",
-    desc: "Überblick über Energie, Kosten, CO₂ und Gebäude.",
+    desc: "Overview of energy, cost, CO₂ and buildings.",
     icon: <BarChart3 className="h-6 w-6" />,
   },
   {
     role: "technician",
     title: "Technician",
-    desc: "Betrieb, Alerts, Zeitplan und Anlagenstatus im Blick.",
+    desc: "Operations, alerts, schedule and unit status.",
     icon: <Wrench className="h-6 w-6" />,
   },
 ];
@@ -51,11 +51,12 @@ export default function Home() {
             Intelligent Heat Link
           </p>
           <h2 className="mt-3 text-4xl font-bold leading-[1.1]">
-            Mobile Wärme, intelligent gesteuert.
+            Mobile heat, intelligently controlled.
           </h2>
           <p className="mt-4 text-lg font-light text-white/90">
-            Betriebskosten mobiler Heizgeräte um <strong className="font-bold">20–30&nbsp;%</strong>{" "}
-            senken — bei jederzeit optimalem Raumklima.
+            Cut the operating cost of mobile heaters by{" "}
+            <strong className="font-bold">20–30&nbsp;%</strong> — with optimal indoor climate
+            at all times.
           </p>
         </div>
 
@@ -80,13 +81,13 @@ export default function Home() {
           />
 
           <p className="text-gradient text-sm font-bold uppercase tracking-[0.18em]">
-            Willkommen
+            Welcome
           </p>
           <h1 className="mt-2 text-4xl font-bold text-graphite-900">
-            Wählen Sie Ihre <span className="text-gradient">ROLLE</span>
+            Choose your <span className="text-gradient">ROLE</span>
           </h1>
           <p className="mt-3 text-graphite-600">
-            Öffnen Sie das Dashboard, das zu Ihrer Arbeit passt.
+            Open the dashboard that fits your work.
           </p>
 
           <div className="mt-8 flex flex-col gap-4">
@@ -112,7 +113,7 @@ export default function Home() {
 
           <p className="mt-8 flex items-center gap-2 text-xs text-graphite-600/70">
             <span className="spark" style={{ width: 8, height: 8 }} />
-            Kein Login erforderlich · Demo-Modus
+            No login required · Demo mode
           </p>
         </div>
       </main>

@@ -10,57 +10,63 @@ import {
   XAxis,
   YAxis,
   Tooltip,
+  ReferenceArea,
 } from "recharts";
+
+const COMFORT_LO = 20;
+const COMFORT_HI = 22;
 import { Card, CardHeader } from "@/src/components/ui/card";
 import { useFilters, formatRange } from "@/src/features/dashboard/filters/filters-context";
-import { useFaults, useFaultTimeline } from "@/src/features/dashboard/queries/useFaultQueries";
+import { useOptimized } from "@/src/features/dashboard/queries/useEnergyQueries";
+
+type Row = { ts?: string; room?: number; setpoint?: number; outside?: number; optimized?: number };
 
 const TARGET_POINTS = 220;
 
 function labelFor(ts: string, multiDay: boolean) {
   const d = new Date(ts);
-  if (multiDay) {
-    return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "2-digit" }).format(d);
-  }
-  return new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit" }).format(d);
+  return multiDay
+    ? new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "2-digit" }).format(d)
+    : new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit" }).format(d);
 }
 
 export function TemperatureProfile() {
-  const { range, coverage } = useFilters();
+  const { range } = useFilters();
+  const { coverage } = useFilters();
   const window = coverage.window === "cooling" ? "cooling" : "heating";
-
-  // Reuse the live fault feed to get a real device id, then pull its full timeline.
-  const { data: faults } = useFaults(window);
-  const deviceId = faults?.alerts?.[0]?.deviceId;
-  const { data: timeline, isLoading } = useFaultTimeline(deviceId, window);
+  const { data, isLoading } = useOptimized(window);
 
   const { rows, stats } = useMemo(() => {
-    const all = timeline?.rows ?? [];
+    const all: Row[] = (data?.data ?? []) as Row[];
     const inRange = all.filter((r) => {
-      const day = (r.ts ?? "").slice(0, 10);
-      return day >= range.from && day <= range.to && typeof r.T_room === "number";
+      const day = String(r.ts ?? "").slice(0, 10);
+      return day >= range.from && day <= range.to && typeof r.room === "number";
     });
     const multiDay = range.from !== range.to;
     const step = Math.max(1, Math.ceil(inRange.length / TARGET_POINTS));
     const sampled = inRange
       .filter((_, i) => i % step === 0)
       .map((r) => ({
-        label: labelFor(r.ts, multiDay),
-        room: r.T_room,
+        label: labelFor(String(r.ts), multiDay),
+        room: r.room,
         setpoint: r.setpoint,
-        outside: r.T_out,
+        outside: r.outside,
+        optimized: r.optimized,
       }));
 
-    const rooms = inRange.map((r) => r.T_room as number);
+    const rooms = inRange.map((r) => r.room as number);
     const minT = rooms.length ? Math.min(...rooms) : 0;
     const maxT = rooms.length ? Math.max(...rooms) : 0;
-    // % of samples within comfort (>= setpoint - 0.5) while a 21°C setpoint is active
     const active = inRange.filter((r) => (r.setpoint ?? 0) >= 20);
-    const comfy = active.filter((r) => (r.T_room as number) >= (r.setpoint as number) - 0.5);
+    const comfy = active.filter((r) => (r.room as number) >= (r.setpoint as number) - 0.5);
     const comfortPct = active.length ? Math.round((comfy.length / active.length) * 100) : null;
+    const inZone = active.filter(
+      (r) => (r.optimized as number) >= COMFORT_LO && (r.optimized as number) <= COMFORT_HI
+    );
+    const zonePct = active.length ? Math.round((inZone.length / active.length) * 100) : null;
 
-    return { rows: sampled, stats: { minT, maxT, comfortPct } };
-  }, [timeline, range]);
+    return { rows: sampled, stats: { minT, maxT, comfortPct, zonePct } };
+  }, [data, range]);
 
   const hasData = rows.length > 0;
 
@@ -68,12 +74,14 @@ export function TemperatureProfile() {
     <Card>
       <CardHeader
         title="Temperature Profile"
-        subtitle={`Room vs. setpoint vs. outside · ${formatRange(range)}`}
+        subtitle={`Measured vs. model-optimized room · ${formatRange(range)}`}
         action={
           <div className="flex items-center gap-4 text-xs text-graphite-600/80">
-            <Legend color="#19567b" label="Room" />
+            <Legend color="#19567b" label="Room (actual)" />
+            <Legend color="#ff6148" label="Optimized (model)" />
             <Legend color="#1fa971" label="Setpoint" dashed />
             <Legend color="#9AA3AF" label="Outside" />
+            <Legend color="#1fa971" label={`Comfort zone ${COMFORT_LO}–${COMFORT_HI}°C`} />
           </div>
         }
       />
@@ -91,11 +99,14 @@ export function TemperatureProfile() {
         </div>
       ) : (
         <>
-          <div className="mb-3 flex gap-6">
+          <div className="mb-3 flex flex-wrap gap-6">
             <Stat label="Room low" value={`${stats.minT.toFixed(1)}°C`} />
             <Stat label="Room high" value={`${stats.maxT.toFixed(1)}°C`} />
             {stats.comfortPct !== null && (
-              <Stat label="Time at comfort" value={`${stats.comfortPct}%`} />
+              <Stat label="Comfort (actual)" value={`${stats.comfortPct}%`} />
+            )}
+            {stats.zonePct !== null && (
+              <Stat label="In comfort zone" value={`${stats.zonePct}%`} accent />
             )}
           </div>
           <div className="h-[280px] w-full">
@@ -108,6 +119,13 @@ export function TemperatureProfile() {
                   </linearGradient>
                 </defs>
                 <CartesianGrid stroke="#E7E9ED" vertical={false} />
+                <ReferenceArea
+                  y1={COMFORT_LO}
+                  y2={COMFORT_HI}
+                  fill="#1fa971"
+                  fillOpacity={0.1}
+                  ifOverflow="extendDomain"
+                />
                 <XAxis
                   dataKey="label"
                   tickLine={false}
@@ -133,7 +151,7 @@ export function TemperatureProfile() {
                   stroke="#19567b"
                   strokeWidth={2.5}
                   fill="url(#temp-room-fill)"
-                  name="Room"
+                  name="Room (actual)"
                   dot={false}
                 />
                 <Line
@@ -152,6 +170,14 @@ export function TemperatureProfile() {
                   strokeWidth={2}
                   dot={false}
                   name="Outside"
+                />
+                <Line
+                  type="monotone"
+                  dataKey="optimized"
+                  stroke="#ff6148"
+                  strokeWidth={2.5}
+                  dot={false}
+                  name="Optimized room (model)"
                 />
               </ComposedChart>
             </ResponsiveContainer>
@@ -174,11 +200,11 @@ function Legend({ color, label, dashed }: { color: string; label: string; dashed
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
     <div>
       <p className="text-[11px] uppercase text-graphite-600/60">{label}</p>
-      <p className="tabular text-lg font-semibold text-graphite-900">{value}</p>
+      <p className={`tabular text-lg font-semibold ${accent ? "text-coral-600" : "text-graphite-900"}`}>{value}</p>
     </div>
   );
 }
