@@ -2,27 +2,59 @@
 
 import { useState } from "react";
 import { AppTopbar } from "@/src/shared/app-topbar";
-import { useFilters } from "@/src/features/dashboard/filters/filters-context";
+import { useFilters, formatRange } from "@/src/features/dashboard/filters/filters-context";
 import { useLocations } from "@/src/features/dashboard/locations/locations-context";
-import { ChevronDown, ChevronRight, FileText, Loader2, Check, AlertCircle } from "lucide-react";
+import { useSavings } from "@/src/features/dashboard/queries/useSavings";
+import { Card, CardHeader } from "@/src/components/ui/card";
+import {
+  FileText,
+  Loader2,
+  Check,
+  AlertCircle,
+  CalendarRange,
+  MapPin,
+  Euro,
+  Leaf,
+  Download,
+  Building2,
+} from "lucide-react";
 
 type ReportType = "financial" | "sustainability";
 
-type Week = {
-  id: string;
-  start: string; // YYYY-MM-DD (Monday)
-  end: string;   // YYYY-MM-DD (Sunday)
-  hasData: boolean;
-};
-
-const WEEKS: Week[] = [
-  { id: "2026-03-23", start: "2026-03-23", end: "2026-03-29", hasData: false },
-  { id: "2026-03-30", start: "2026-03-30", end: "2026-04-05", hasData: true },
-];
-
-const REPORT_OPTIONS: { value: ReportType; title: string }[] = [
-  { value: "financial", title: "Energy Savings — Financial Report" },
-  { value: "sustainability", title: "Sustainability Report" },
+const REPORT_OPTIONS: {
+  value: ReportType;
+  title: string;
+  blurb: string;
+  icon: typeof Euro;
+  accent: string; // icon chip classes
+  includes: string[];
+}[] = [
+  {
+    value: "financial",
+    title: "Energy Savings — Financial Report",
+    blurb: "Cost and consumption breakdown for finance & facility management.",
+    icon: Euro,
+    accent: "bg-sky-50 text-sky-500",
+    includes: [
+      "Energy saved (kWh) vs. blind preheat",
+      "Cost saved (€) at €0.30/kWh",
+      "Measured vs. optimized consumption",
+      "Per-day savings over the period",
+    ],
+  },
+  {
+    value: "sustainability",
+    title: "Sustainability Report",
+    blurb: "Emissions and efficiency summary for ESG & compliance.",
+    icon: Leaf,
+    accent: "bg-ember-50 text-ember-600",
+    includes: [
+      "CO₂ avoided (kg) at 0.4 kg/kWh",
+      "Energy efficiency improvement (%)",
+      "Comfort compliance vs. target",
+      "Equivalent emissions context",
+    ],
+  },
 ];
 
 type RunState =
@@ -32,18 +64,11 @@ type RunState =
   | { kind: "error"; message: string };
 
 export default function ReportsPage() {
-  const [expanded, setExpanded] = useState<string | null>(null);
   const [selected, setSelected] = useState<ReportType | null>(null);
   const [run, setRun] = useState<RunState>({ kind: "idle" });
   const { range } = useFilters();
   const { selected: location } = useLocations();
-
-  function toggleWeek(week: Week) {
-    if (!week.hasData) return;
-    setExpanded((prev) => (prev === week.id ? null : week.id));
-    setSelected(null);
-    setRun({ kind: "idle" });
-  }
+  const s = useSavings();
 
   async function createDocument() {
     if (!selected) return;
@@ -95,119 +120,148 @@ export default function ReportsPage() {
     <>
       <AppTopbar
         title="Reports"
-        subtitle={`Financial & compliance reports · ${location.name}`}
+        subtitle={`Financial & sustainability reports · ${location.name}`}
       />
 
-      <main className="flex flex-col gap-3">
-        {WEEKS.map((week) => {
-          const isExpanded = expanded === week.id;
-          const Chevron = isExpanded ? ChevronDown : ChevronRight;
-          return (
-            <section
-              key={week.id}
-              className={`rounded-2xl bg-white ${
-                week.hasData ? "" : "opacity-60"
-              }`}
-            >
-              <button
-                type="button"
-                onClick={() => toggleWeek(week)}
-                disabled={!week.hasData}
-                className={`flex w-full items-center justify-between px-5 py-4 text-left ${
-                  week.hasData ? "cursor-pointer hover:bg-slate-50" : "cursor-not-allowed"
-                } rounded-2xl`}
+      <main className="flex flex-col gap-5">
+        {/* ── Report period (from the top date selector) ───────────── */}
+        <Card>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-coral-50 text-coral-500">
+                <CalendarRange className="h-5 w-5" />
+              </span>
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-graphite-600/70">
+                  Reporting period
+                </p>
+                <p className="text-lg font-bold text-graphite-900">{formatRange(range)}</p>
+                <p className="mt-0.5 text-[11px] text-graphite-600/60">
+                  Follows the date selector at the top — change it there to re-scope the report.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-5">
+              <div className="flex items-center gap-2 text-sm text-graphite-700">
+                <MapPin className="h-4 w-4 text-graphite-600/60" />
+                {location.name}
+              </div>
+              <div className="flex items-center gap-2 text-sm text-graphite-700">
+                <Building2 className="h-4 w-4 text-graphite-600/60" />
+                {location.units} units
+              </div>
+              <span
+                className={`rounded-md px-2.5 py-1 text-xs font-semibold ${
+                  s.hasData
+                    ? "bg-emerald-50 text-emerald-600"
+                    : "bg-slate-100 text-slate-500"
+                }`}
               >
-                <div className="flex items-center gap-3">
-                  <Chevron size={18} className="text-slate-400" />
-                  <div>
-                    <p className="font-semibold text-sm text-graphite-900">
-                      Week of {week.start}
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      {week.start} → {week.end}
-                    </p>
-                  </div>
-                </div>
-                <span
-                  className={`text-xs font-medium px-2 py-1 rounded-md ${
-                    week.hasData
-                      ? "bg-green-50 text-green-600"
-                      : "bg-slate-100 text-slate-500"
+                {s.hasData ? "Data available" : "No data in range"}
+              </span>
+            </div>
+          </div>
+        </Card>
+
+        {/* ── Report type selection ────────────────────────────────── */}
+        <Card>
+          <CardHeader
+            title="Choose a report type"
+            subtitle="Both cover the selected period and location"
+          />
+          <div className="grid grid-cols-2 gap-4">
+            {REPORT_OPTIONS.map((opt) => {
+              const active = selected === opt.value;
+              const Icon = opt.icon;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => {
+                    setSelected(opt.value);
+                    setRun({ kind: "idle" });
+                  }}
+                  className={`flex flex-col gap-3 rounded-xl border p-4 text-left transition-colors ${
+                    active
+                      ? "border-coral-500 bg-coral-50/40"
+                      : "border-line bg-white hover:border-slate-300 dark:bg-graphite-800"
                   }`}
                 >
-                  {week.hasData ? "Data available" : "No data"}
-                </span>
-              </button>
-
-              {isExpanded && week.hasData && (
-                <div className="border-t border-slate-100 px-5 pt-5 pb-5">
-                  <p className="mb-3 text-xs font-medium uppercase tracking-wide text-slate-500">
-                    Choose a report type
-                  </p>
-                  <div className="flex flex-col gap-2">
-                    {REPORT_OPTIONS.map((opt) => {
-                      const active = selected === opt.value;
-                      return (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() => setSelected(opt.value)}
-                          className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm transition-colors ${
-                            active
-                              ? "border-coral-500 bg-coral-50 text-graphite-900"
-                              : "border-slate-200 bg-white text-graphite-900 hover:border-slate-300"
-                          }`}
-                        >
-                          <span
-                            className={`flex h-8 w-8 items-center justify-center rounded-full ${
-                              active ? "bg-coral-500 text-white" : "bg-slate-100 text-slate-500"
-                            }`}
-                          >
-                            <FileText size={15} />
-                          </span>
-                          <span className="font-medium">{opt.title}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  <div className="mt-5 flex items-center justify-between">
-                    <button
-                      type="button"
-                      onClick={createDocument}
-                      disabled={!selected || run.kind === "running"}
-                      className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
-                        selected && run.kind !== "running"
-                          ? "bg-graphite-900 text-white hover:bg-graphite-700"
-                          : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                  <div className="flex items-center justify-between">
+                    <span className={`flex h-10 w-10 items-center justify-center rounded-full ${opt.accent}`}>
+                      <Icon className="h-5 w-5" />
+                    </span>
+                    <span
+                      className={`flex h-5 w-5 items-center justify-center rounded-full border-2 ${
+                        active ? "border-coral-500 bg-coral-500 text-white" : "border-slate-300"
                       }`}
                     >
-                      {run.kind === "running" ? (
-                        <>
-                          <Loader2 size={14} className="animate-spin" />
-                          Generating…
-                        </>
-                      ) : (
-                        <>Create Document</>
-                      )}
-                    </button>
-
-                    {run.kind === "done" && (
-                      <span className="flex items-center gap-1.5 text-xs text-green-600">
-                        <Check size={14} /> Downloaded {run.filename}
-                      </span>
-                    )}
-                    {run.kind === "error" && (
-                      <span className="flex items-center gap-1.5 text-xs text-red-600">
-                        <AlertCircle size={14} /> {run.message}
-                      </span>
-                    )}
+                      {active && <Check className="h-3 w-3" />}
+                    </span>
                   </div>
-                </div>
+                  <div>
+                    <p className="text-sm font-bold text-graphite-900">{opt.title}</p>
+                    <p className="mt-0.5 text-xs text-graphite-600/75">{opt.blurb}</p>
+                  </div>
+                  <ul className="mt-1 flex flex-col gap-1.5">
+                    {opt.includes.map((line) => (
+                      <li key={line} className="flex items-start gap-2 text-xs text-graphite-700">
+                        <FileText className="mt-0.5 h-3 w-3 flex-shrink-0 text-graphite-600/50" />
+                        {line}
+                      </li>
+                    ))}
+                  </ul>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* ── Generate ───────────────────────────────────────────── */}
+          <div className="mt-5 flex items-center justify-between border-t border-line pt-4">
+            <div className="text-xs text-graphite-600/70">
+              {selected
+                ? `Ready to generate the ${
+                    selected === "financial" ? "Financial" : "Sustainability"
+                  } report as a PDF.`
+                : "Select a report type to continue."}
+            </div>
+            <div className="flex items-center gap-3">
+              {run.kind === "done" && (
+                <span className="flex items-center gap-1.5 text-xs text-emerald-600">
+                  <Check size={14} /> Downloaded {run.filename}
+                </span>
               )}
-            </section>
-          );
-        })}
+              {run.kind === "error" && (
+                <span className="flex items-center gap-1.5 text-xs text-coral-600">
+                  <AlertCircle size={14} /> {run.message}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={createDocument}
+                disabled={!selected || !s.hasData || run.kind === "running"}
+                className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+                  selected && s.hasData && run.kind !== "running"
+                    ? "bg-graphite-900 text-white hover:bg-graphite-700"
+                    : "cursor-not-allowed bg-slate-200 text-slate-400"
+                }`}
+              >
+                {run.kind === "running" ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    Generating…
+                  </>
+                ) : (
+                  <>
+                    <Download size={14} />
+                    Create Document
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </Card>
       </main>
     </>
   );

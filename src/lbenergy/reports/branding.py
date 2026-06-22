@@ -20,7 +20,7 @@ RULE_COLOR = colors.black
 FONT_FAMILY = "Helvetica"
 FONT_FAMILY_BOLD = "Helvetica-Bold"
 
-LOGO_PATH = REPO_ROOT / "assets" / "brand" / "lb-energy-logo.svg"
+LOGO_PATH = REPO_ROOT / "assets" / "lb-brand-assets" / "lb-energy-logo.svg"
 SECOND_LOGO_PATH = REPO_ROOT / "assets" / "OnQ-0roundRemover.png"
 LOGO_HEIGHT_PT = 36  # ~0.5 inch; both logos render at this height
 LOGO_GAP_PT = 12  # horizontal space between the two logos
